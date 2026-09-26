@@ -1,0 +1,7 @@
+{
+  "name": "cutcut",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-only image splitter for continuous photo posts",
+  "scripts": { "start": "node serve.cjs", "test": "node --test tests/core.test.cjs", "check": "node --check app.js && node --check core.js" }
+}
