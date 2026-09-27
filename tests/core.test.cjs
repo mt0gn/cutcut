@@ -1,6 +1,29 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {arrange,fitSize,gapPixels,coverRect,photoTiles,crc32,zip}=require('../core.js');
+const {arrange,fitSize,gapPixels,coverRect,photoTiles,cropBounds,zoomCrop,panCrop,resizeCrop,crc32,zip}=require('../core.js');
+function cropFixture(){const s={W:2400,H:1400,count:4,gap:4,compensate:true,zoom:1,...fitSize(2400,1400,4,4,true)};s.positions=arrange(s);return s;}
+test('zoom halves crop rectangles and gaps, keeping source dimensions intact',()=>{
+ const s=cropFixture(),before=structuredClone(s),z={...s,...zoomCrop(s,2)};
+ assert.equal(z.w,s.w/2);assert.equal(z.h,s.h/2);assert.equal(z.W,2400);assert.equal(z.H,1400);assert.deepEqual(s,before);
+ assert.ok(Math.abs((z.positions[1].x-z.positions[0].x-z.w)-gapPixels(z))<1e-8);
+ const back=zoomCrop(z,1);assert.equal(back.w,s.w);assert.equal(back.h,s.h);
+ back.positions.forEach((p,i)=>assert.ok(Math.abs(p.x-s.positions[i].x)<1e-8&&Math.abs(p.y-s.positions[i].y)<1e-8));
+});
+test('zoomed crop can reach both original vertical edges',()=>{
+ const s=cropFixture();Object.assign(s,zoomCrop(s,2));assert.equal(s.h,700);
+ Object.assign(s,resizeCrop(s,'top',-100000,s.positions,s.h,true));assert.equal(s.positions[0].y,0);assert.equal(s.h,1050);
+ Object.assign(s,resizeCrop(s,'bottom',100000,s.positions,s.h,true));assert.equal(s.h,1400);assert.equal(s.positions.at(-1).y+s.h,s.H);
+});
+test('pan reaches all source edges and zoom-out stays inside after manual height resize',()=>{
+ const s=cropFixture();Object.assign(s,zoomCrop(s,4));s.positions=panCrop(s,-1,-1);assert.equal(cropBounds(s).x,0);assert.equal(cropBounds(s).y,0);
+ s.positions=panCrop(s,1,1);const b=cropBounds(s);assert.equal(b.x+b.w,s.W);assert.equal(b.y+b.h,s.H);
+ Object.assign(s,resizeCrop(s,'top',-100000,s.positions,s.h,true));Object.assign(s,zoomCrop(s,1));
+ for(const p of s.positions){assert.ok(p.x>=-1e-8&&p.y>=-1e-8);assert.ok(p.x+s.w<=s.W+1e-8&&p.y+s.h<=s.H+1e-8);}
+});
+test('free crops zoom together while preserving independent vertical offsets',()=>{
+ const s=cropFixture();s.h=700;s.positions[0].y=50;s.positions[1].y=300;s.positions[2].y=100;s.positions[3].y=500;
+ const z=zoomCrop(s,2);assert.equal(z.positions[1].y-z.positions[0].y,125);assert.equal(z.positions[3].y-z.positions[2].y,200);
+});
 test('uncompensated crops cover image without seams',()=>{
  const s={W:2400,H:1400,count:4,gap:8,compensate:false,...fitSize(2400,1400,4,8,false)};
  const p=arrange(s);assert.equal(p[0].x,0);assert.equal(p[3].x+s.w,2400);assert.equal(p[1].x,p[0].x+s.w);

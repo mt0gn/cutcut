@@ -30,22 +30,22 @@ function photoList(){
 function setCount(count){if(!activePhoto||totalCount()-state.count+count>4)return;state.count=count;state.selected=Math.min(state.selected,count-1);resetLayout();}
 function toast(message){$('status').textContent=message;$('status').classList.add('visible');clearTimeout(notification);notification=setTimeout(()=>$('status').classList.remove('visible'),4500);}
 function freshCell(){return {image:null,name:'',zoom:1,panX:0,panY:0};}
-function resetLayout(){Object.assign(state,fitSize(state.W,state.H,state.count,state.gap,state.compensate));state.positions=arrange(state);syncFields();render();}
-function syncFields(){ $('width').value=state.w;$('height').value=state.h;$('gap-value').value=state.gap+' px';document.querySelectorAll('[data-count]').forEach(b=>{b.setAttribute('aria-pressed',!!activePhoto&&Number(b.dataset.count)===state.count);b.disabled=!activePhoto||totalCount()-activePhoto.count+Number(b.dataset.count)>4;});}
+function resetLayout(){Object.assign(state,fitSize(state.W,state.H,state.count,state.gap,state.compensate));state.zoom=1;state.panX=0;state.panY=0;state.positions=arrange(state);syncFields();render();}
+function syncFields(){ $('width').value=Number(state.w.toFixed(2));$('height').value=Number(state.h.toFixed(2));$('gap-value').value=state.gap+' px';document.querySelectorAll('[data-count]').forEach(b=>{b.setAttribute('aria-pressed',!!activePhoto&&Number(b.dataset.count)===state.count);b.disabled=!activePhoto||totalCount()-activePhoto.count+Number(b.dataset.count)>4;});}
 function queueRender(){cancelAnimationFrame(raf);raf=requestAnimationFrame(render);}
 function syncSelected(){
   $('selected-label').textContent=activePhoto?`${photoOffset()+1}–${photoOffset()+state.count}`:'—';$('cell-source').textContent=state.source?state.name:'사진을 추가해주세요';
   for(const id of ['zoom','pan-x','pan-y','restore'])$(id).disabled=!state.source;
   $('zoom').value=(state.zoom||1)*100;$('zoom-value').value=Math.round((state.zoom||1)*100)+'%';$('pan-x').value=(state.panX||0)*100;$('pan-y').value=(state.panY||0)*100;
 }
-function drawSource(ctx,photo){const r=coverRect(photo.W,photo.H,photo.W,photo.H,photo.zoom||1,photo.panX||0,photo.panY||0);ctx.drawImage(photo.source,r.x,r.y,r.w,r.h);}
+function drawSource(ctx,photo){ctx.drawImage(photo.source,0,0,photo.W,photo.H);}
 function drawTile(canvas,index,width,height,photo=state){
   canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   const pos=photo.positions[index];
-  if(photo.source){ctx.scale(width/photo.w,height/photo.h);ctx.translate(-pos.x,-pos.y);drawSource(ctx,photo);}
+  if(photo.source)ctx.drawImage(photo.source,pos.x,pos.y,photo.w,photo.h,0,0,width,height);
 }
 function render(){
-  stash();photoList();syncFields();syncSelected();if(!state.source){$('stage').hidden=true;$('empty').hidden=false;$('preview-track').replaceChildren();$('export-info').textContent='사진을 추가해주세요.';for(const id of ['download','replace','cell-download'])$(id).disabled=true;return;}
+  if(state.source)Object.assign(state,SplitCore.cropPan(state));stash();photoList();syncFields();syncSelected();if(!state.source){$('stage').hidden=true;$('empty').hidden=false;$('preview-track').replaceChildren();$('export-info').textContent='사진을 추가해주세요.';for(const id of ['download','replace','cell-download'])$(id).disabled=true;return;}
   $('source-info').textContent=`${state.name} · ${state.W.toLocaleString()} × ${state.H.toLocaleString()} px`;$('width').max=state.W;$('height').max=state.H;
   const stage=$('stage');stage.hidden=false;$('empty').hidden=true;
   const wrapStyle=getComputedStyle($('dropzone'));const available=$('dropzone').clientWidth-parseFloat(wrapStyle.paddingLeft)-parseFloat(wrapStyle.paddingRight);
@@ -76,7 +76,7 @@ async function loadSource(files){if(loading||state.busy)return;loading=true;phot
 function setSource(image,name){if(totalCount()>=4){toast('기존 사진의 칸 수를 줄여 새 사진의 자리를 만들어주세요.');return;}stash();const photo={source:image,W:image.width,H:image.height,name:name.replace(/\.[^.]+$/,''),count:1,cells:Array.from({length:4},freshCell),selected:0,positions:[],zoom:1,panX:0,panY:0};Object.assign(photo,fitSize(photo.W,photo.H,photo.count,state.gap,state.compensate));photo.positions=arrange({...photo,gap:state.gap,compensate:state.compensate});photos.push(photo);activate(photo);}
 $('upload').onclick=()=>$('source-file').click();$('source-file').onchange=e=>{loadSource(Array.from(e.target.files));e.target.value='';};
 $('replace').onclick=()=>$('cell-file').click();$('cell-file').onchange=async e=>{const file=e.target.files[0],photo=activePhoto;e.target.value='';if(!file||!photo||loading||state.busy)return;loading=true;photoList();try{const image=await decode(file);if(!photos.includes(photo))return;activate(photo);state.source=image;state.W=image.width;state.H=image.height;state.name=file.name.replace(/\.[^.]+$/,'');state.zoom=1;state.panX=0;state.panY=0;resetLayout();}catch(err){toast(err.message);}finally{loading=false;photoList();}};
-$('restore').onclick=()=>{state.zoom=1;state.panX=0;state.panY=0;render();};
+$('restore').onclick=()=>{if(state.source)resetLayout();};
 const dropzone=$('dropzone');['dragenter','dragover'].forEach(type=>dropzone.addEventListener(type,e=>{e.preventDefault();dropzone.classList.add('dragover');}));dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('dragover'));dropzone.addEventListener('drop',e=>{e.preventDefault();dropzone.classList.remove('dragover');loadSource(Array.from(e.dataTransfer.files));});
 $('counts').onclick=e=>{const count=Number(e.target.dataset.count);if(count)setCount(count);};
 $('fit').onclick=()=>{if(state.source)resetLayout();};
@@ -86,18 +86,13 @@ function updateDimensions(){if(!state.source)return;let w=clamp(Math.round(Numbe
 $('movement').onchange=()=>{if(state.source)updateDimensions();};
 function updateGap(){state.gap=Number($('gap').value);state.compensate=$('compensate').checked;$('gap-help').textContent=state.compensate?'틈에 가려질 부분을 건너뛰어 장면을 연결합니다. 저장되는 사진에는 여백이 들어가지 않습니다.':'사진을 빈틈없이 나눕니다. 이어보기에는 비교를 위한 간격만 표시됩니다.';syncFields();if(state.source){if($('movement').value==='free'){render();toast('자유 이동에서는 각 칸의 위치를 직접 조절합니다.');}else {stash();for(const photo of photos){const g=state.compensate?state.gap*photo.h/480:0;photo.w=Math.min(photo.w,Math.max(16,Math.floor((photo.W-(photo.count-1)*g)/photo.count)));photo.positions=arrange({...photo,gap:state.gap,compensate:state.compensate});}for(const key of photoKeys)state[key]=activePhoto[key];updateDimensions();}}}
 $('compensate').onchange=updateGap;$('gap').oninput=updateGap;
-['zoom','pan-x','pan-y'].forEach(id=>$(id).oninput=()=>{if(!state.source)return;state.zoom=Number($('zoom').value)/100;state.panX=Number($('pan-x').value)/100;state.panY=Number($('pan-y').value)/100;queueRender();});
+$('zoom').oninput=()=>{if(!state.source)return;Object.assign(state,SplitCore.zoomCrop(state,Number($('zoom').value)/100));queueRender();};
+for(const id of ['pan-x','pan-y'])$(id).oninput=()=>{if(!state.source)return;const pan=SplitCore.cropPan(state);pan[id==='pan-x'?'panX':'panY']=Number($(id).value)/100;state.positions=SplitCore.panCrop(state,pan.panX,pan.panY);queueRender();};
 ['scale','format'].forEach(id=>$(id).onchange=render);
 for(const mode of ['light','dark'])$(mode).onclick=()=>{$('preview-scroll').classList.toggle('dark',mode==='dark');$('light').setAttribute('aria-pressed',mode==='light');$('dark').setAttribute('aria-pressed',mode==='dark');};
 function moveFrames(dx,dy,initial){const linked=$('movement').value==='linked';const indices=linked?state.positions.map((_,i)=>i):[state.selected];const minX=Math.min(...indices.map(i=>initial[i].x)),maxX=Math.max(...indices.map(i=>initial[i].x+state.w)),minY=Math.min(...indices.map(i=>initial[i].y)),maxY=Math.max(...indices.map(i=>initial[i].y+state.h));dx=clamp(dx,-minX,state.W-maxX);dy=clamp(dy,-minY,state.H-maxY);for(const i of indices)state.positions[i]={x:initial[i].x+dx,y:initial[i].y+dy};}
 function resizeEdge(edge,dy,initial,oldH){
-  const minY=Math.min(...initial.map(p=>p.y)),maxY=Math.max(...initial.map(p=>p.y));
-  if($('movement').value==='linked'&&state.compensate&&state.gap>0){const maxH=Math.floor((state.W-state.count*16)*480/((state.count-1)*state.gap));dy=edge==='top'?Math.max(dy,oldH-maxH):Math.min(dy,maxH-oldH);}
-  if(edge==='top'){dy=clamp(dy,-minY,oldH-16);state.h=Math.round(oldH-dy);state.positions=initial.map(p=>({...p,y:p.y+dy}));}
-  else{state.h=Math.round(clamp(oldH+dy,16,state.H-maxY));}
-  if($('movement').value==='linked'){
-    const g=gapPixels(state),maxW=Math.floor((state.W-(state.count-1)*g)/state.count);state.w=Math.min(state.w,Math.max(16,maxW));const total=state.count*state.w+(state.count-1)*g;const x=clamp(initial[0].x,0,Math.max(0,state.W-total));state.positions.forEach((p,i)=>p.x=x+i*(state.w+g));
-  }
+  Object.assign(state,SplitCore.resizeCrop(state,edge,dy,initial,oldH,$('movement').value==='linked'));
   syncFields();
 }
 let drag=null;
