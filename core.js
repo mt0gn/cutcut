@@ -18,6 +18,7 @@
     const dw=imageW*scale,dh=imageH*scale;
     return {x:(w-dw)/2+panX*(dw-w)/2,y:(h-dh)/2+panY*(dh-h)/2,w:dw,h:dh};
   }
+  function photoTiles(photos){return photos.flatMap(photo=>Array.from({length:photo.count},(_,index)=>({photo,index}))).map((tile,index)=>({...tile,number:index+1}));}
   const crcTable=Array.from({length:256},(_,n)=>{for(let i=0;i<8;i++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
   function crc32(data){let c=0xffffffff;for(const b of data)c=crcTable[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0;}
   function zip(files){
@@ -33,6 +34,6 @@
     const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,centralSize,true);e.setUint32(16,offset,true);
     return new Blob([...chunks,...central,end],{type:'application/zip'});
   }
-  const api={clamp,gapPixels,fitSize,arrange,coverRect,crc32,zip};
+  const api={clamp,gapPixels,fitSize,arrange,coverRect,photoTiles,crc32,zip};
   if(typeof module!=='undefined')module.exports=api;else root.SplitCore=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
